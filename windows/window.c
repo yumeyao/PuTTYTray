@@ -1557,6 +1557,7 @@ static int get_font_width(HDC hdc, const TEXTMETRIC *tm)
     return ret;
 }
 
+static int font_height_local, font_width_local;
 /*
  * Initialise all the fonts we will need initially. There may be as many as
  * three or as few as one.  The other (potentially) twenty-one fonts are done
@@ -1608,19 +1609,16 @@ static void init_fonts(int pick_width, int pick_height)
 		-MulDiv(font_height, GetDeviceCaps(hdc, LOGPIXELSY), 72);
 	}
     }
-    font_width = pick_width;
+    font_width = font_width_local = pick_width;
+    font_height_local = font_height;
 
 #define f(i,c,w,u) \
-    fonts[i] = CreateFont (font_height, font_width, 0, 0, w, FALSE, u, FALSE, \
-			   c, OUT_DEFAULT_PRECIS, \
+    fonts[i] = CreateFont (font_height_local, font_width_local, 0, 0, w, \
+			   FALSE, u, FALSE, c, OUT_DEFAULT_PRECIS, \
 		           CLIP_DEFAULT_PRECIS, FONT_QUALITY(cfg.font_quality), \
 			   FIXED_PITCH | FF_DONTCARE, cfg.font.name)
 
     f(FONT_NORMAL, cfg.font.charset, fw_dontcare, FALSE);
-
-    if (bold_mode == BOLD_FONT) {
-        f(FONT_BOLD, cfg.font.charset, fw_bold, FALSE);
-    }
 
     SelectObject(hdc, fonts[FONT_NORMAL]);
     GetTextMetrics(hdc, &tm);
@@ -1713,6 +1711,9 @@ static void init_fonts(int pick_width, int pick_height)
 	}
     }
 
+    if (bold_mode == BOLD_FONT) {
+	f(FONT_BOLD, cfg.font.charset, fw_bold, FALSE);
+    }
 #undef f
 
     descent = tm.tmAscent + 1;
@@ -1752,7 +1753,7 @@ static void another_font(int fontno)
 {
     int basefont;
     int fw_dontcare, fw_bold;
-    int c, u, w, x;
+    int c, u, w, x, h;
     char *s;
 
     if (fontno < 0 || fontno >= FONT_MAXNO || fontflag[fontno])
@@ -1774,12 +1775,21 @@ static void another_font(int fontno)
     w = fw_dontcare;
     u = FALSE;
     s = cfg.font.name;
-    x = font_width;
+    x = font_width_local;
+    h = font_height_local;
 
-    if (fontno & FONT_WIDE)
-	x *= 2;
-    if (fontno & FONT_NARROW)
-	x = (x+1)/2;
+    if ((fontno & FONT_WIDE) && !(fontno & FONT_NARROW)) {
+	x = font_width * 2;
+	h = font_height;
+    }
+    if ((fontno & FONT_NARROW) && !(fontno & FONT_WIDE)) {
+	x = (font_width + 1) / 2;
+	h = font_height;
+    }
+    if (fontno & FONT_HIGH) {
+        x = font_width;
+        h = font_height * 2;
+    }
     if (fontno & FONT_OEM)
 	c = OEM_CHARSET;
     if (fontno & FONT_BOLD)
@@ -1788,7 +1798,7 @@ static void another_font(int fontno)
 	u = TRUE;
 
     fonts[fontno] =
-	CreateFont(font_height * (1 + !!(fontno & FONT_HIGH)), x, 0, 0, w,
+	CreateFont(h, x, 0, 0, w,
 		   FALSE, u, FALSE, c, OUT_DEFAULT_PRECIS,
 		   CLIP_DEFAULT_PRECIS, FONT_QUALITY(cfg.font_quality),
 		   DEFAULT_PITCH | FF_DONTCARE, s);
